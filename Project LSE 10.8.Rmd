@@ -1,0 +1,343 @@
+---
+title: "Project LSE"
+author: "Xander Pauwels"
+date: "2024-08-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r data preparation & libararies}
+# Load necessary libraries
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(copula)
+library(QRM)
+library(rugarch)
+library(tseries)
+library(VineCopula)
+library(readr)
+
+GS <- read_csv("Data/GS.csv")
+JPM <- read_csv("Data/JPM.csv")
+WFC <- read_csv("Data/WFC.csv")
+BAC <- read_csv("Data/BAC.csv")
+PG <- read_csv("Data/PG.csv")
+KO <- read_csv("Data/KO.csv")
+XOM <- read_csv("Data/XOM.csv")
+SLB <- read_csv("Data/SLB.csv")
+IBM <- read_csv("Data/IBM.csv")
+MSFT <- read_csv("Data/MSFT.csv")
+
+GS_new <- read_csv("Data/GS_new.csv")
+JPM_new <- read_csv("Data/JPM_new.csv")
+WFC_new <- read_csv("Data/WFC_new.csv")
+BAC_new <- read_csv("Data/BAC_new.csv")
+PG_new <- read_csv("Data/PG_new.csv")
+KO_new <- read_csv("Data/KO_new.csv")
+XOM_new <- read_csv("Data/XOM_new.csv")
+SLB_new <- read_csv("Data/SLB_new.csv")
+IBM_new <- read_csv("Data/IBM_new.csv")
+MSFT_new <- read_csv("Data/MSFT_new.csv")
+
+
+
+stocks <- c("GS", "JPM", "WFC", "BAC", "PG", "KO", "XOM", "SLB", "IBM", "MSFT")
+financial.stocks = c(stocks[1],stocks[2],stocks[3],stocks[4])
+non.financial.stocks = setdiff(stocks, financial.stocks)
+
+
+# Extract Necessary Data
+price.GS <- GS$PRC
+price.JPM <- JPM$PRC
+price.WFC <- WFC$PRC
+price.BAC <- BAC$PRC
+price.PG <- PG$PRC
+price.KO <- KO$PRC
+price.XOM <- XOM$PRC
+price.SLB <- SLB$PRC
+price.IBM <- IBM$PRC
+price.MSFT <- MSFT$PRC
+
+# Combine data into data frame
+prices <- data.frame(
+  Date = GS$date,
+  GS = price.GS,
+  JPM = price.JPM,
+  WFC = price.WFC,
+  BAC = price.BAC,
+  PG = price.PG,
+  KO = price.KO,
+  XOM = price.XOM,
+  SLB = price.SLB,
+  IBM = price.IBM,
+  MSFT = price.MSFT
+)
+prices.financial <- data.frame(
+  Date = GS$date,
+  GS = price.GS,
+  JPM = price.JPM,
+  WFC = price.WFC,
+  BAC = price.BAC
+)
+prices.non.financial <- data.frame(
+  Date = GS$date,
+  PG = price.PG,
+  KO = price.KO,
+  XOM = price.XOM,
+  SLB = price.SLB,
+  IBM = price.IBM,
+  MSFT = price.MSFT
+)
+
+# Put into long-format to plot (Source: https://www.youtube.com/watch?v=HPJn1CMvtmI&list=PLtL57Fdbwb_C6RS0JtBojTNOMVlgpeJkS)
+prices.long <- prices %>%
+  pivot_longer(cols = -Date, names_to = "Stock", values_to = "Price")
+
+```
+
+
+```{r Plot stock prices}
+# Plot stock prices
+ggplot(prices.long, aes(x = Date, y = Price, color = Stock)) +
+  geom_line() +
+  labs(title = "Stock Prices Over Time",
+       x = "Date",
+       y = "Price",
+       color = "Stock") +
+  theme_minimal() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.6))
+```
+
+```{r Calculate log returns}
+# Calculate log returns
+log.returns <- matrix(0, nrow = nrow(prices) - 1, ncol = length(stocks))
+
+log.returns[1, 1] <- log(prices[2, 2] / prices[1, 2])
+
+for (j in 1:length(stocks)) {
+  for (i in 1:(nrow(prices) - 1)) {
+    log.returns[i, j] <- log(prices[i+1, j+1] / prices[i, j+1])
+  }
+}
+```
+
+
+```{r Data manipulation}
+# Convert log.returns matrix to a data frame for easier manipulation
+log.returns.df <- as.data.frame(log.returns)
+log.returns.df$Date <- prices$Date[-1]
+
+# Set column names for log.returns.df
+colnames(log.returns.df) <- c(stocks, "Date")
+
+# Again convert to long format for ggplot
+log.returns.long <- log.returns.df %>%
+  pivot_longer(cols = -Date, names_to = "Stock", values_to = "Log_Return")
+```
+
+
+```{r plot log returns}
+# Plot log returns all stocks
+ggplot(log.returns.long, aes(x = Date, y = Log_Return, color = Stock, alpha = 0.2)) +
+  geom_line() +
+  labs(title = "Log Returns Over Time",
+       x = "Date",
+       y = "Log Return",
+       color = "Stock") +
+  theme_minimal() +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.6))
+
+
+# Plot log returns for a single stock
+for (i in 0:length(stocks)+1) {
+  head(log.returns.long)
+  log.returns.single.stock <- log.returns.long %>%
+    filter(Stock == stocks[i])
+  
+  plotting <- ggplot(log.returns.single.stock, aes(x = Date, y = Log_Return, color = Stock)) +
+    geom_line() +
+    labs(title = paste("Log Returns for ", stocks[i], " Over Time"),
+         x = "Date",
+         y = "Log Return",
+         color = "Stock") +
+    theme_minimal() +
+    theme(legend.position = "right",
+          plot.title = element_text(hjust = 0.6))
+  
+  print(plotting)
+}
+```
+
+```{r Plot pair-wise & portfolio returns}
+# Plot pair-wise scatter plots for stock return
+# from the same sector or different sector
+pairs(prices.financial, col = rgb(1,0,0,0.1))
+pairs(prices.non.financial, col = rgb(1,0,0,0.1))
+
+pf.weights <- c(0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1)
+
+pf.returns.t <- log.returns %*% pf.weights 
+pf.value.t <- 10000 * exp(cumsum(pf.returns.t))
+
+# Put into data frame to plot
+pf.returns.df <- data.frame(
+  Date = GS$date[-1],
+  returns = pf.returns.t)
+```
+
+```{r Plot portfolio returns}
+# Plot
+ggplot(pf.returns.df, aes(x = Date, y = pf.returns.t)) +
+  geom_line(color = "blue") +
+  labs(title = "Portfolio Log Returns Over Time",
+       x = "Date",
+       y = "Log Return") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r Loss function}
+# Loss function
+loss.t <- numeric(length(pf.value.t) - 1)
+# Loop to calculate losses
+for (i in 1:(length(pf.value.t) - 1)) {
+  loss <- pf.value.t[i] - pf.value.t[i+1]
+  loss.t[i] <- loss
+}
+```
+
+```{r Calculate VaR}
+# Find parametersfor normal
+mean.value <- mean(loss.t)
+sd.value <- sd(loss.t)
+
+# Calculate VaR at 95% confidence level using normal distribution
+VaR.normal <- -(mean.value + qnorm(0.95) * sd.value)
+VaR.normal
+
+# VaR non-parametric
+VaR.empirical <- -quantile(loss.t, probs = 0.95)
+VaR.empirical
+```
+
+```{r Backtesting (same commands)}
+# ------------- #
+## BACKTESTING ##
+# ------------- #
+
+prices.new <- data.frame(
+  Date = GS_new$date,
+  GS = GS_new$PRC,
+  JPM = JPM_new$PRC,
+  WFC = WFC_new$PRC,
+  BAC = BAC_new$PRC,
+  PG = PG_new$PRC,
+  KO = KO_new$PRC,
+  XOM = XOM_new$PRC,
+  SLB = SLB_new$PRC,
+  IBM = IBM_new$PRC,
+  MSFT = MSFT_new$PRC
+)
+
+# Calculate log returns
+log.returns.new <- matrix(0, nrow = nrow(prices.new) - 1, ncol = length(stocks))
+
+log.returns.new[1, 1] <- log(prices.new[2, 2] / prices.new[1, 2])
+
+for (j in 1:length(stocks)) {
+  for (i in 1:(nrow(prices.new) - 1)) {
+    log.returns.new[i, j] <- log(prices.new[i+1, j+1] / prices.new[i, j+1])
+  }
+}
+ 
+pf.returns.new <- log.returns.new %*% pf.weights 
+pf.value.new <- 10000 * exp(cumsum(pf.returns.new))
+
+# Loss function NEW
+loss.new <- numeric(length(pf.value.new) - 1)
+# Loop to calculate losses NEW
+for (i in 1:(length(pf.value.new) - 1)) {
+  loss <- pf.value.new[i] - pf.value.new[i+1]
+  loss.new[i] <- loss
+}
+```
+
+```{r Test VaR}
+# Test VaR
+vector.VaR <- rep(VaR.normal, length(loss.new))
+head(vector.VaR)
+VaRTest(alpha = 0.95, loss.new, vector.VaR)
+```
+
+```{r Copula fitting}
+financial.log.returns <- log.returns.new[, 1:4]
+
+U <- pobs(financial.log.returns)
+fit.gaussian <- fit.gausscopula(U)
+fit.t <- fit.tcopula(U)
+fit.gumbel <- fit.AC(U[,1:2], "gumbel")
+fit.clayton <- fit.AC(U[,1:2], "clayton")
+log.likelihoods <- data.frame(
+  copula = c("Gaussian", "t", "Gumbel", "Clayton"),
+  logLik = c(fit.gaussian$ll.max, fit.t$ll.max, fit.gumbel$ll.max, fit.clayton$ll.max)
+)
+
+print(log.likelihoods)
+```
+
+```{r Decide which is best copula}
+# Number of parameters respectively: Gaussian, t, Gumbel, Clayton
+num.parameters <- c(1, 2, 1, 1)
+
+# Calculate AIC for each copula model
+AIC.values <- 2 * num.parameters - 2 * log.likelihoods$logLik
+
+# Create a data frame with the AIC values
+aic.results <- data.frame(
+  copula = log.likelihoods$copula,
+  AIC = AIC.values
+)
+
+print(aic.results)
+
+```
+```{r Jarque-Bera test}
+# Jarque-Bera test (Source: https://rdrr.io/cran/tseries/man/jarque.bera.test.html)
+jb_test <- jarque.bera.test(loss.new)
+jb_test
+```
+
+```{r Correlation vs Tail Dependence}
+# Correlation
+correlation_matrix <- cor(prices.new[,2:11])
+correlation_matrix["BAC","JPM"]
+# We see that BAC and JPM have a very high correlation coefficient
+
+# Tail dependence coefficients
+# Note: The following code is from StackOverflow
+# Select the two stocks
+colnames(log.returns.new) <- stocks
+stock1 <- log.returns.new[, "BAC"]
+stock2 <- log.returns.new[, "JPM"]
+
+# Create pseudo-observations
+U <- pobs(cbind(stock1, stock2))
+
+# Fit a t-copula
+t_copula <- BiCopSelect(U[,1], U[,2], familyset = 2)  # 2 is for t-copula
+
+# Calculate the upper and lower tail dependence coefficients
+upper_tail_dependence <- 2 * (1 - pt(sqrt(t_copula$par2 + 1) * qt(0.95, df = t_copula$par2), df = t_copula$par2 + 1))
+lower_tail_dependence <- 2 * pt(-sqrt(t_copula$par2 + 1) * qt(0.95, df = t_copula$par2), df = t_copula$par2 + 1)
+
+cat("Upper Tail Dependence Coefficient:", upper_tail_dependence, "\n")
+cat("Lower Tail Dependence Coefficient:", lower_tail_dependence, "\n")
+
+```
+
