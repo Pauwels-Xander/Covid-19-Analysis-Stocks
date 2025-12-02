@@ -7,4 +7,4 @@ The project includes:
 - A PDF report summarizing results and visualizations
 
 The report covers volatility, log-returns, portfolio risk (VaR), and copula-based dependence modelling.  
-Detailed findings are in the report: see the included PDF. :contentReference[oaicite:0]{index=0}
+Detailed findings are in the report: see the included PDF.
