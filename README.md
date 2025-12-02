@@ -16,5 +16,6 @@ Using S&P 500 daily data (2000–2024), we evaluate 1-, 5-, and 21-day volatilit
 Key result: While Student-t copulas capture strong tail dependence in-sample, they **do not improve out-of-sample forecasts**, and the **asymmetric Realized GARCH** model remains the most accurate.
 
 ## Files
-- `script.R` — all estimation, copula fitting, and forecasting code  
-- `Case Report.pdf` — full report with tables, plots, and interpretation  
+- `script.R` - all estimation, copula fitting, and forecasting code  
+- `Case Report.pdf` - full report with tables, plots, and interpretation
+- `Data` - Data used in `script.R`
